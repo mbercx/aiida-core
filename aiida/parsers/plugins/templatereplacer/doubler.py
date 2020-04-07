@@ -7,27 +7,21 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-
 import os
 
-from aiida.common import exceptions
 from aiida.orm import Dict
 from aiida.parsers.parser import Parser
-from aiida.plugins import CalculationFactory
-
-TemplatereplacerCalculation = CalculationFactory('templatereplacer')
 
 
 class TemplatereplacerDoublerParser(Parser):
 
     def parse(self, **kwargs):
         """Parse the contents of the output files retrieved in the `FolderData`."""
-        template = self.node.inputs.template.get_dict()
+        if self.node.exit_status == self.exit_codes.ERROR_NO_RETRIEVED_FOLDER.status:
+            return
 
-        try:
-            output_folder = self.retrieved
-        except exceptions.NotExistent:
-            return self.exit_codes.ERROR_NO_RETRIEVED_FOLDER
+        output_folder = self.retrieved
+        template = self.node.inputs.template.get_dict()
 
         try:
             output_file = template['output_file_name']
@@ -73,8 +67,7 @@ class TemplatereplacerDoublerParser(Parser):
 
     @staticmethod
     def parse_stdout(filelike):
-        """
-        Parse the sum from the output of the ArithmeticAddcalculation written to standard out
+        """Parse the sum from the output of the ArithmeticAddcalculation written to standard out.
 
         :param filelike: filelike object containing the output
         :returns: the sum

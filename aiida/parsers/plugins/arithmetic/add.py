@@ -16,13 +16,11 @@ class ArithmeticAddParser(Parser):
 
     def parse(self, **kwargs):  # pylint: disable=inconsistent-return-statements
         """Parse the contents of the output files retrieved in the `FolderData`."""
-        try:
-            output_folder = self.retrieved
-        except AttributeError:
-            return self.exit_codes.ERROR_NO_RETRIEVED_FOLDER
+        if self.node.exit_status == self.exit_codes.ERROR_NO_RETRIEVED_FOLDER.status:
+            return
 
         try:
-            with output_folder.open(self.node.get_attribute('output_filename'), 'r') as handle:
+            with self.retrieved.open(self.node.get_attribute('output_filename'), 'r') as handle:
                 result = self.parse_stdout(handle)
         except (OSError, IOError):
             return self.exit_codes.ERROR_READING_OUTPUT_FILE
@@ -42,8 +40,7 @@ class ArithmeticAddParser(Parser):
 
     @staticmethod
     def parse_stdout(filelike):
-        """
-        Parse the sum from the output of the ArithmeticAddcalculation written to standard out
+        """Parse the sum from the output of the ArithmeticAddcalculation written to standard out
 
         :param filelike: filelike object containing the output
         :returns: the sum
