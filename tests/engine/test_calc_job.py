@@ -7,6 +7,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
+# pylint: disable=too-many-public-methods
 """Test for the `CalcJob` process sub class."""
 from copy import deepcopy
 from functools import partial
@@ -17,7 +18,7 @@ import pytest
 
 from aiida import orm
 from aiida.backends.testbase import AiidaTestCase
-from aiida.common import exceptions
+from aiida.common import exceptions, LinkType, CalcJobState
 from aiida.engine import launch, CalcJob, Process
 from aiida.engine.processes.ports import PortNamespace
 from aiida.plugins import CalculationFactory
@@ -80,6 +81,23 @@ class TestCalcJob(AiidaTestCase):
         cls.remote_code = orm.Code(remote_computer_exec=(cls.computer, '/bin/bash')).store()
         cls.local_code = orm.Code(local_executable='bash', files=['/bin/bash']).store()
         cls.inputs = {'x': orm.Int(1), 'y': orm.Int(2), 'metadata': {'options': {}}}
+
+    def instantiate_process(self, state=CalcJobState.PARSING):
+        """Instantiate a process with default inputs and return the `Process` instance."""
+        from aiida.engine.utils import instantiate_process
+        from aiida.manage.manager import get_manager
+
+        inputs = deepcopy(self.inputs)
+        inputs['code'] = self.remote_code
+
+        manager = get_manager()
+        runner = manager.get_runner()
+
+        process_class = CalculationFactory('arithmetic.add')
+        process = instantiate_process(runner, process_class, **inputs)
+        process.node.set_state(state)
+
+        return process
 
     def setUp(self):
         super().setUp()
@@ -302,3 +320,78 @@ class TestCalcJob(AiidaTestCase):
         self.assertIn('base', node.list_object_names())
         self.assertEqual(sorted(['b']), sorted(node.list_object_names(os.path.join('base'))))
         self.assertEqual(['two'], node.list_object_names(os.path.join('base', 'b')))
+
+    def test_parse_no_retrieved_folder(self):
+        """Test the `CalcJob.parse` method when there is not retrieved folder."""
+        process = self.instantiate_process()
+        exit_code = process.parse()
+
+        assert exit_code == process.exit_codes.ERROR_NO_RETRIEVED_FOLDER
+
+    def test_parse_retrieved_folder(self):
+        """Test the `CalcJob.parse` method when there is a retrieved folder."""
+        process = self.instantiate_process()
+        retrieved = orm.FolderData().store()
+        retrieved.add_incoming(process.node, link_label='retrieved', link_type=LinkType.CREATE)
+        exit_code = process.parse()
+
+        # The following exit code is specific to the `ArithmeticAddCalculation` we are testing here and is returned
+        # because the retrieved folder does not contain the output file it expects
+        assert exit_code == process.exit_codes.ERROR_READING_OUTPUT_FILE
+
+    def test_parse_insufficient_data(self):
+        """Test the scheduler output parsing logic in `CalcJob.parse`.
+
+        Here we check explicitly that the parsing does not except even if the required information is not available.
+        """
+        process = self.instantiate_process()
+        retrieved = orm.FolderData().store()
+        retrieved.add_incoming(process.node, link_label='retrieved', link_type=LinkType.CREATE)
+        process.parse()
+
+        filename_stderr = process.node.get_option('scheduler_stderr')
+        filename_stdout = process.node.get_option('scheduler_stdout')
+
+        # The scheduler parsing requires three resources of information, the `detailed_job_info` dictionary which is
+        # stored as an attribute on the calculation job node and the output of the stdout and stderr which are both
+        # stored in the repository. In this test, we haven't created these on purpose. This should not except the
+        # process but should log a warning, so here we check that those expected warnings are attached to the node
+        logs = [log.message for log in orm.Log.objects.get_logs_for(process.node)]
+        expected_logs = [
+            'could not parse scheduler output: the `detailed_job_info` attribute is missing',
+            'could not parse scheduler output: the `{}` file is missing'.format(filename_stderr),
+            'could not parse scheduler output: the `{}` file is missing'.format(filename_stdout)
+        ]
+
+        for log in expected_logs:
+            assert log in logs
+
+    def test_parse_not_implemented(self):
+        """Test the scheduler output parsing logic in `CalcJob.parse`.
+
+        Here we check explicitly that the parsing does not except even if the scheduler does not implement the method.
+        """
+        process = self.instantiate_process()
+        retrieved = orm.FolderData().store()
+        retrieved.add_incoming(process.node, link_label='retrieved', link_type=LinkType.CREATE)
+
+        process.node.set_attribute('detailed_job_info', {})
+
+        filename_stderr = process.node.get_option('scheduler_stderr')
+        filename_stdout = process.node.get_option('scheduler_stdout')
+
+        with retrieved.open(filename_stderr, 'w') as handle:
+            handle.write('\n')
+
+        with retrieved.open(filename_stdout, 'w') as handle:
+            handle.write('\n')
+
+        process.parse()
+
+        # The `DirectScheduler` at this point in time does not implement the `parse_output` method. Instead of raising
+        # a warning message should be logged. We verify here that said message is present.
+        logs = [log.message for log in orm.Log.objects.get_logs_for(process.node)]
+        expected_logs = ['could not parse scheduler output: output parsing is not available for `DirectScheduler`']
+
+        for log in expected_logs:
+            assert log in logs

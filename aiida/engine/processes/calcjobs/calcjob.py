@@ -176,6 +176,14 @@ class CalcJob(Process):
             help='Files that are retrieved by the daemon will be stored in this node. By default the stdout and stderr '
                  'of the scheduler will be added, but one can add more by specifying them in `CalcInfo.retrieve_list`.')
 
+        # Errors caused or returned by the scheduler
+        spec.exit_code(100, 'ERROR_NO_RETRIEVED_FOLDER',
+            message='The process did not have the required `retrieved` output.')
+        spec.exit_code(110, 'ERROR_SCHEDULER_OUT_OF_MEMORY',
+            message='The job ran out of memory.')
+        spec.exit_code(120, 'ERROR_SCHEDULER_OUT_OF_WALLTIME',
+            message='The job ran out of walltime.')
+
     @classproperty
     def spec_options(cls):  # pylint: disable=no-self-argument
         """Return the metadata options port namespace of the process specification of this process.
@@ -256,17 +264,60 @@ class CalcJob(Process):
         This is called once it's finished waiting for the calculation to be finished and the data has been retrieved.
         """
         import shutil
+        from aiida.engine import ExitCode
         from aiida.engine.daemon import execmanager
+
+        try:
+            retrieved = self.node.outputs.retrieved
+        except exceptions.NotExistent:
+            return self.exit_codes.ERROR_NO_RETRIEVED_FOLDER  # pylint: disable=no-member
+
+        scheduler = self.node.computer.get_scheduler()
+        filename_stderr = self.node.get_option('scheduler_stderr')
+        filename_stdout = self.node.get_option('scheduler_stdout')
+
+        try:
+            detailed_job_info = self.node.get_attribute('detailed_job_info')
+        except AttributeError:
+            detailed_job_info = None
+            self.logger.warning('could not parse scheduler output: the `detailed_job_info` attribute is missing')
+
+        try:
+            scheduler_stderr = retrieved.get_object_content(filename_stderr)
+        except FileNotFoundError:
+            scheduler_stderr = None
+            self.logger.warning('could not parse scheduler output: the `{}` file is missing'.format(filename_stderr))
+
+        try:
+            scheduler_stdout = retrieved.get_object_content(filename_stdout)
+        except FileNotFoundError:
+            scheduler_stdout = None
+            self.logger.warning('could not parse scheduler output: the `{}` file is missing'.format(filename_stdout))
+
+        # Only attempt to call the scheduler parser if all three resources of information are available
+        if all(entry is not None for entry in [detailed_job_info, scheduler_stderr, scheduler_stdout]):
+            try:
+                exit_code = scheduler.parse_output(detailed_job_info, scheduler_stdout, scheduler_stderr)
+            except exceptions.FeatureNotAvailable as exception:
+                self.logger.warning('could not parse scheduler output: {}'.format(exception))
+            except Exception as exception:  # pylint: disable=broad-except
+                self.logger.warning('the `parser_output` method of the scheduler excepted: {}'.format(exception))
+            else:
+                # If an exit code is returned by the scheduler output parser, we log it and set it on the node. This
+                # will allow the actual `Parser` implementation, if defined in the inputs, to inspect it and decide to
+                # keep it, or override it with a more specific exit code, if applicable. This way, if there is no parser
+                # or the parser decides to keep the scheduler exit code, this will already have been set here.
+                if isinstance(exit_code, ExitCode) and exit_code.status > 0:
+                    args = (scheduler.__class__.__name__, exit_code.status, exit_code.message)
+                    self.logger.warning('`{}.parse_output` returned exit code<{}>: {}'.format(*args))
+                    self.node.set_exit_status(exit_code.status)
+                    self.node.set_exit_message(exit_code.message)
 
         try:
             exit_code = execmanager.parse_results(self, retrieved_temporary_folder)
         finally:
             # Delete the temporary folder
-            try:
-                shutil.rmtree(retrieved_temporary_folder)
-            except OSError as exception:
-                if exception.errno != 2:
-                    raise
+            shutil.rmtree(retrieved_temporary_folder, ignore_errors=True)
 
         # Finally link up the outputs and we're done
         for entry in self.node.get_outgoing():

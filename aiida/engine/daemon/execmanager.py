@@ -445,7 +445,8 @@ def parse_results(process, retrieved_temporary_folder=None):
             raise ValueError('parse should return an `ExitCode` or None, and not {}'.format(type(exit_code)))
 
         if exit_code.status:
-            parser.logger.error('parser returned exit code<{}>: {}'.format(exit_code.status, exit_code.message))
+            args = (parser.__class__.__name__, exit_code.status, exit_code.message)
+            parser.logger.error('`{}.parse` returned exit code<{}>: {}'.format(*args))
 
         for link_label, node in parser.outputs.items():
             try:
