@@ -13,6 +13,8 @@ import logging
 import uuid
 import datetime
 
+import pytest
+
 from aiida.schedulers.plugins.slurm import SlurmScheduler, JobState
 
 # pylint: disable=line-too-long
@@ -184,8 +186,7 @@ class TestSubmitScript(unittest.TestCase):
         self.assertTrue('#SBATCH --time=1-00:00:00' in submit_script_text)
         self.assertTrue('#SBATCH --nodes=1' in submit_script_text)
 
-        self.assertTrue("'mpirun' '-np' '23' 'pw.x' '-npool' '1'" + \
-                        " < 'aiida.in'" in submit_script_text)
+        self.assertTrue("'mpirun' '-np' '23' 'pw.x' '-npool' '1'" + " < 'aiida.in'" in submit_script_text)
 
     def test_submit_script_bad_shebang(self):
         """Test that first line of submit script is as expected."""
@@ -243,8 +244,7 @@ class TestSubmitScript(unittest.TestCase):
         self.assertTrue('#SBATCH --ntasks-per-node=2' in submit_script_text)
         self.assertTrue('#SBATCH --cpus-per-task=12' in submit_script_text)
 
-        self.assertTrue("'mpirun' '-np' '23' 'pw.x' '-npool' '1'" + \
-                        " < 'aiida.in'" in submit_script_text)
+        self.assertTrue("'mpirun' '-np' '23' 'pw.x' '-npool' '1'" + " < 'aiida.in'" in submit_script_text)
 
     def test_submit_script_with_num_cores_per_mpiproc(self):  # pylint: disable=invalid-name
         """
@@ -276,8 +276,7 @@ class TestSubmitScript(unittest.TestCase):
         self.assertTrue('#SBATCH --ntasks-per-node=1' in submit_script_text)
         self.assertTrue('#SBATCH --cpus-per-task=24' in submit_script_text)
 
-        self.assertTrue("'mpirun' '-np' '23' 'pw.x' '-npool' '1'" + \
-                        " < 'aiida.in'" in submit_script_text)
+        self.assertTrue("'mpirun' '-np' '23' 'pw.x' '-npool' '1'" + " < 'aiida.in'" in submit_script_text)
 
     def test_submit_script_with_num_cores_per_machine_and_mpiproc1(self):  # pylint: disable=invalid-name
         """
@@ -312,8 +311,7 @@ class TestSubmitScript(unittest.TestCase):
         self.assertTrue('#SBATCH --ntasks-per-node=1' in submit_script_text)
         self.assertTrue('#SBATCH --cpus-per-task=24' in submit_script_text)
 
-        self.assertTrue("'mpirun' '-np' '23' 'pw.x' '-npool' '1'" + \
-                        " < 'aiida.in'" in submit_script_text)
+        self.assertTrue("'mpirun' '-np' '23' 'pw.x' '-npool' '1'" + " < 'aiida.in'" in submit_script_text)
 
     def test_submit_script_with_num_cores_per_machine_and_mpiproc2(self):  # pylint: disable=invalid-name
         """
@@ -334,5 +332,43 @@ class TestSubmitScript(unittest.TestCase):
             )
 
 
-if __name__ == '__main__':
-    unittest.main()
+def test_parse_out_of_memory():
+    """Test that for job that failed due to OOM `parse_output` return the `ERROR_SCHEDULER_OUT_OF_MEMORY` code."""
+    from aiida.engine import CalcJob
+
+    scheduler = SlurmScheduler()
+    stdout = ''
+    stderr = ''
+    detailed_job_info = {
+        'retval': 0,
+        'stderr': '',
+        'stdout': """||||||||||||||||||||||||||||||||||||||||||||||||||
+        |||||||||||||||||||||||||||||||||||||||||OUT_OF_MEMORY|||||||||"""
+    }  # yapf: disable
+
+    exit_code = scheduler.parse_output(detailed_job_info, stdout, stderr)
+    assert exit_code == CalcJob.exit_codes.ERROR_SCHEDULER_OUT_OF_MEMORY  # pylint: disable=no-member
+
+
+@pytest.mark.parametrize('detailed_job_info, expected', [
+    ('string', TypeError),  # Not a dictionary
+    ({'stderr': ''}, ValueError),  # Key `stdout` missing
+    ({'stdout': None}, TypeError),  # `stdout` is not a string
+    ({'stdout': ''}, ValueError),  # `stdout` does not contain at least two lines
+    ({'stdout': 'Header\nValue'}, ValueError),  # `stdout` second line contains too few elements separated by pipe
+]) # yapf: disable
+def test_parse_output_invalid(detailed_job_info, expected):
+    """Test `SlurmScheduler.parse_output` for various invalid arguments."""
+    scheduler = SlurmScheduler()
+
+    with pytest.raises(expected):
+        scheduler.parse_output(detailed_job_info, '', '')
+
+
+def test_parse_output_valid():
+    """Test `SlurmScheduler.parse_output` for valid arguments."""
+    number_of_fields = len(SlurmScheduler._detailed_job_info_fields)  # pylint: disable=protected-access
+    detailed_job_info = {'stdout': 'Header\n{}'.format('|' * number_of_fields)}
+    scheduler = SlurmScheduler()
+
+    assert scheduler.parse_output(detailed_job_info, '', '') is None
