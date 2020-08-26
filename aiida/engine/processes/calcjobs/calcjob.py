@@ -97,6 +97,7 @@ class CalcJob(Process):
     _node_class = orm.CalcJobNode
     _spec_class = CalcJobProcessSpec
     link_label_retrieved = 'retrieved'
+    _return_scheduler_exitcode = False
 
     def __init__(self, *args, **kwargs):
         """Construct a CalcJob instance.
@@ -308,10 +309,13 @@ class CalcJob(Process):
                 # keep it, or override it with a more specific exit code, if applicable. This way, if there is no parser
                 # or the parser decides to keep the scheduler exit code, this will already have been set here.
                 if isinstance(exit_code, ExitCode) and exit_code.status > 0:
-                    args = (scheduler.__class__.__name__, exit_code.status, exit_code.message)
-                    self.logger.warning('`{}.parse_output` returned exit code<{}>: {}'.format(*args))
-                    self.node.set_exit_status(exit_code.status)
-                    self.node.set_exit_message(exit_code.message)
+                    if self._return_scheduler_exitcode:
+                        return exit_code
+                    else:
+                        args = (scheduler.__class__.__name__, exit_code.status, exit_code.message)
+                        self.logger.warning('`{}.parse_output` returned exit code<{}>: {}'.format(*args))
+                        self.node.set_exit_status(exit_code.status)
+                        self.node.set_exit_message(exit_code.message)
 
         try:
             exit_code = execmanager.parse_results(self, retrieved_temporary_folder)
