@@ -175,6 +175,10 @@ class BackendEntity(abc.ABC):
         :rtype: bool
         """
 
+    def _flush_if_stored(self, fields):
+        if self._dbmodel.is_saved():
+            self._dbmodel._flush(fields)  # pylint: disable=protected-access
+
 
 class BackendCollection(typing.Generic[EntityType]):
     """Container class that represents a collection of entries of a particular backend entity."""
