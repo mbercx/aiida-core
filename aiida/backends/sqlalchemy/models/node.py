@@ -39,8 +39,8 @@ class DbNode(Base):
     description = Column(Text(), nullable=True, default='')
     ctime = Column(DateTime(timezone=True), default=timezone.now)
     mtime = Column(DateTime(timezone=True), default=timezone.now, onupdate=timezone.now)
-    attributes = Column(JSONB)
-    extras = Column(JSONB)
+    attributes = Column(JSONB, default=dict, server_default='{}')
+    extras = Column(JSONB, default=dict, server_default='{}')
 
     dbcomputer_id = Column(
         Integer,
@@ -96,12 +96,6 @@ class DbNode(Base):
         # AiiDA import functions.
         if 'mtime' not in kwargs:
             self.mtime = None
-
-        if self.attributes is None:
-            self.attributes = dict()
-
-        if self.extras is None:
-            self.extras = dict()
 
     @property
     def outputs(self):

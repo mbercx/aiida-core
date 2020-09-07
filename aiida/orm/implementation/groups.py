@@ -12,6 +12,7 @@
 import abc
 
 from aiida.common import exceptions
+from aiida.orm.implementation.entities import ExtrasBackendEntity
 
 from . import backends
 from .nodes import BackendNode
@@ -19,7 +20,7 @@ from .nodes import BackendNode
 __all__ = ('BackendGroup', 'BackendGroupCollection')
 
 
-class BackendGroup(backends.BackendEntity):
+class BackendGroup(backends.BackendEntity, ExtrasBackendEntity):
     """
     An AiiDA ORM implementation of group of nodes.
     """
