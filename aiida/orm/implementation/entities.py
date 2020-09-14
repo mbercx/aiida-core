@@ -8,7 +8,6 @@
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
 """Classes and methods for backend non-specific entities"""
-
 import abc
 
 from aiida.orm.utils.node import clean_value, validate_attribute_extra_key

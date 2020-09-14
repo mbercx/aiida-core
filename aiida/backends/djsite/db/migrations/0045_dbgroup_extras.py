@@ -7,7 +7,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-"""Migration for adding the extras column to the dbgroup table."""
+"""Migration to add the `extras` JSONB column to the `DbGroup` model."""
 #pylint: disable=invalid-name
 import django.contrib.postgres.fields.jsonb
 from django.db import migrations

@@ -12,7 +12,7 @@
 import abc
 
 from aiida.common import exceptions
-from aiida.orm.implementation.entities import ExtrasBackendEntity
+from .entities import ExtrasBackendEntity
 
 from . import backends
 from .nodes import BackendNode

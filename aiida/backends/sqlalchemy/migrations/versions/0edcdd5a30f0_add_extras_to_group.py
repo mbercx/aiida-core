@@ -8,7 +8,7 @@
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
 # pylint: disable=no-member,invalid-name
-"""Add extras column to the db_dbgroup table.
+"""Migration to add the `extras` JSONB column to the `DbGroup` model.
 
 Revision ID: 0edcdd5a30f0
 Revises: bf591f31dd12
@@ -34,5 +34,5 @@ def upgrade():
 
 
 def downgrade():
-    """Downgrade: Drop the extras column to the 'db_dbgroup' table"""
+    """Downgrade: Drop the extras column from the 'db_dbgroup' table"""
     op.drop_column('db_dbgroup', 'extras')
