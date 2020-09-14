@@ -11,13 +11,12 @@
 
 import abc
 
-from aiida.orm.implementation.entities import AttributesBackendEntity, ExtrasBackendEntity
-from . import backends
+from .entities import BackendEntity, BackendCollection, BackendEntityAttributesMixin, BackendEntityExtrasMixin
 
 __all__ = ('BackendNode', 'BackendNodeCollection')
 
 
-class BackendNode(backends.BackendEntity, ExtrasBackendEntity, AttributesBackendEntity, metaclass=abc.ABCMeta):
+class BackendNode(BackendEntity, BackendEntityExtrasMixin, BackendEntityAttributesMixin, metaclass=abc.ABCMeta):
     """Wrapper around a `DbNode` instance to set and retrieve data independent of the database implementation."""
 
     # pylint: disable=too-many-public-methods
@@ -158,7 +157,7 @@ class BackendNode(backends.BackendEntity, ExtrasBackendEntity, AttributesBackend
         """
 
     @abc.abstractmethod
-    def store(self, links=None, with_transaction=True, clean=True):
+    def store(self, links=None, with_transaction=True, clean=True):  # pylint: disable=arguments-differ
         """Store the node in the database.
 
         :param links: optional links to add before storing
@@ -167,7 +166,7 @@ class BackendNode(backends.BackendEntity, ExtrasBackendEntity, AttributesBackend
         """
 
 
-class BackendNodeCollection(backends.BackendCollection[BackendNode]):
+class BackendNodeCollection(BackendCollection[BackendNode]):
     """The collection of `BackendNode` entries."""
 
     # pylint: disable=too-few-public-methods

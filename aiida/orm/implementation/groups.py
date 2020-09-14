@@ -12,15 +12,14 @@
 import abc
 
 from aiida.common import exceptions
-from .entities import ExtrasBackendEntity
+from .entities import BackendEntity, BackendCollection, BackendEntityExtrasMixin
 
-from . import backends
 from .nodes import BackendNode
 
 __all__ = ('BackendGroup', 'BackendGroupCollection')
 
 
-class BackendGroup(backends.BackendEntity, ExtrasBackendEntity):
+class BackendGroup(BackendEntity, BackendEntityExtrasMixin):
     """
     An AiiDA ORM implementation of group of nodes.
     """
@@ -102,7 +101,7 @@ class BackendGroup(backends.BackendEntity, ExtrasBackendEntity):
         :return: (group, created) where group is the group (new or existing,
           in any case already stored) and created is a boolean saying
         """
-        res = cls.query(name=kwargs.get('name'))
+        res = cls.query(name=kwargs.get('name'))  # pylint: disable=no-member
 
         if not res:
             return cls.create(*args, **kwargs), True
@@ -194,7 +193,7 @@ class BackendGroup(backends.BackendEntity, ExtrasBackendEntity):
         return '"{}" [user-defined], of user {}'.format(self.label, self.user.email)
 
 
-class BackendGroupCollection(backends.BackendCollection[BackendGroup]):
+class BackendGroupCollection(BackendCollection[BackendGroup]):
     """The collection of Group entries."""
 
     ENTITY_CLASS = BackendGroup
