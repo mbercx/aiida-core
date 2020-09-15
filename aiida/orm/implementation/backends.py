@@ -10,11 +10,13 @@
 """Generic backend related objects"""
 import abc
 
-__all__ = ('Backend')
+__all__ = ('Backend',)
 
 
 class Backend(abc.ABC):
     """The public interface that defines a backend factory that creates backend specific concrete objects."""
+
+    # pylint: disable=invalid-name
 
     @abc.abstractmethod
     def migrate(self):
