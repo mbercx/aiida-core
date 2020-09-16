@@ -18,7 +18,7 @@ from aiida.backends.sqlalchemy import get_scoped_session
 from aiida.backends.sqlalchemy.models import node as models
 from aiida.common import exceptions
 from aiida.common.lang import type_check
-from aiida.orm.utils.node import clean_value
+from aiida.orm.implementation.utils import clean_value
 
 from .. import BackendNode, BackendNodeCollection
 from . import entities

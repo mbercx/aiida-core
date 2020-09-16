@@ -17,7 +17,7 @@ from django.db import transaction, IntegrityError
 from aiida.backends.djsite.db import models
 from aiida.common import exceptions
 from aiida.common.lang import type_check
-from aiida.orm.utils.node import clean_value
+from aiida.orm.implementation.utils import clean_value
 
 from .. import BackendNode, BackendNodeCollection
 from . import entities
