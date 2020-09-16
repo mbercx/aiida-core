@@ -37,7 +37,7 @@ class SqlBackend(typing.Generic[ModelType], backends.Backend):
 
         :param model: the ORM model instance to promote to a backend instance
         :return: the backend entity corresponding to the given model
-        :rtype: :class:`aiida.orm.implementation.BackendEntity`
+        :rtype: :class:`aiida.orm.implementation.entities.BackendEntity`
         """
 
     @abc.abstractmethod

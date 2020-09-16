@@ -10,7 +10,7 @@
 """Generic backend related objects"""
 import abc
 
-__all__ = ('Backend')
+__all__ = ('Backend',)  # pylint: disable=undefined-all-variable
 
 
 class Backend(abc.ABC):
