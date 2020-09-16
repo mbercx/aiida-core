@@ -118,7 +118,7 @@ class BackendCollection(typing.Generic[EntityType]):
 
 
 class BackendEntityAttributesMixin(abc.ABC):
-    """Mixin class that adds all methods for the attributes column to an entity"""
+    """Mixin class that adds all methods for the attributes column to a backend entity"""
 
     @property
     def attributes(self):
@@ -287,7 +287,7 @@ class BackendEntityAttributesMixin(abc.ABC):
 
 
 class BackendEntityExtrasMixin(abc.ABC):
-    """Mixin class that adds all methods for the extras column to an entity"""
+    """Mixin class that adds all methods for the extras column to a backend entity"""
 
     @property
     def extras(self):
