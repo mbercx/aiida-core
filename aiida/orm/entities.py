@@ -18,7 +18,7 @@ from aiida.common import datastructures
 from aiida.common.lang import classproperty, type_check
 from aiida.manage.manager import get_manager
 
-__all__ = ('Entity', 'Collection')
+__all__ = ('Entity', 'Collection', 'EntityExtrasMixin')
 
 EntityType = typing.TypeVar('EntityType')  # pylint: disable=invalid-name
 
@@ -304,7 +304,7 @@ class Entity:
 
 
 class EntityExtrasMixin(abc.ABC):
-    """Mixin class that adds all methods for the extras column to an entity"""
+    """Mixin class that adds all methods for the extras column to an entity."""
 
     @property
     def extras(self):
