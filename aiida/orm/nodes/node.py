@@ -9,7 +9,6 @@
 ###########################################################################
 # pylint: disable=too-many-lines
 """Package for node ORM classes."""
-import copy
 import importlib
 import warnings
 
@@ -27,7 +26,7 @@ from aiida.orm import autogroup
 
 from ..comments import Comment
 from ..computers import Computer
-from ..entities import Entity, EntityExtrasMixin
+from ..entities import Entity, EntityExtrasMixin, EntityAttributesMixin
 from ..entities import Collection as EntityCollection
 from ..querybuilder import QueryBuilder
 from ..users import User
@@ -37,7 +36,7 @@ __all__ = ('Node',)
 _NO_DEFAULT = tuple()
 
 
-class Node(Entity, EntityExtrasMixin, metaclass=AbstractNodeMeta):
+class Node(Entity, EntityAttributesMixin, EntityExtrasMixin, metaclass=AbstractNodeMeta):
     """
     Base class for all nodes in AiiDA.
 
@@ -328,161 +327,6 @@ class Node(Entity, EntityExtrasMixin, metaclass=AbstractNodeMeta):
         :return: the mtime
         """
         return self.backend_entity.mtime
-
-    @property
-    def attributes(self):
-        """Return the complete attributes dictionary.
-
-        .. warning:: While the node is unstored, this will return references of the attributes on the database model,
-            meaning that changes on the returned values (if they are mutable themselves, e.g. a list or dictionary) will
-            automatically be reflected on the database model as well. As soon as the node is stored, the returned
-            attributes will be a deep copy and mutations of the database attributes will have to go through the
-            appropriate set methods. Therefore, once stored, retrieving a deep copy can be a heavy operation. If you
-            only need the keys or some values, use the iterators `attributes_keys` and `attributes_items`, or the
-            getters `get_attribute` and `get_attribute_many` instead.
-
-        :return: the attributes as a dictionary
-        """
-        attributes = self.backend_entity.attributes
-
-        if self.is_stored:
-            attributes = copy.deepcopy(attributes)
-
-        return attributes
-
-    def get_attribute(self, key, default=_NO_DEFAULT):
-        """Return the value of an attribute.
-
-        .. warning:: While the node is unstored, this will return a reference of the attribute on the database model,
-            meaning that changes on the returned value (if they are mutable themselves, e.g. a list or dictionary) will
-            automatically be reflected on the database model as well. As soon as the node is stored, the returned
-            attribute will be a deep copy and mutations of the database attributes will have to go through the
-            appropriate set methods.
-
-        :param key: name of the attribute
-        :param default: return this value instead of raising if the attribute does not exist
-        :return: the value of the attribute
-        :raises AttributeError: if the attribute does not exist and no default is specified
-        """
-        try:
-            attribute = self.backend_entity.get_attribute(key)
-        except AttributeError:
-            if default is _NO_DEFAULT:
-                raise
-            attribute = default
-
-        if self.is_stored:
-            attribute = copy.deepcopy(attribute)
-
-        return attribute
-
-    def get_attribute_many(self, keys):
-        """Return the values of multiple attributes.
-
-        .. warning:: While the node is unstored, this will return references of the attributes on the database model,
-            meaning that changes on the returned values (if they are mutable themselves, e.g. a list or dictionary) will
-            automatically be reflected on the database model as well. As soon as the node is stored, the returned
-            attributes will be a deep copy and mutations of the database attributes will have to go through the
-            appropriate set methods. Therefore, once stored, retrieving a deep copy can be a heavy operation. If you
-            only need the keys or some values, use the iterators `attributes_keys` and `attributes_items`, or the
-            getters `get_attribute` and `get_attribute_many` instead.
-
-        :param keys: a list of attribute names
-        :return: a list of attribute values
-        :raises AttributeError: if at least one attribute does not exist
-        """
-        attributes = self.backend_entity.get_attribute_many(keys)
-
-        if self.is_stored:
-            attributes = copy.deepcopy(attributes)
-
-        return attributes
-
-    def set_attribute(self, key, value):
-        """Set an attribute to the given value.
-
-        :param key: name of the attribute
-        :param value: value of the attribute
-        :raise aiida.common.ValidationError: if the key is invalid, i.e. contains periods
-        :raise aiida.common.ModificationNotAllowed: if the node is stored
-        """
-        if self.is_stored:
-            raise exceptions.ModificationNotAllowed('the attributes of a stored node are immutable')
-
-        self.backend_entity.set_attribute(key, value)
-
-    def set_attribute_many(self, attributes):
-        """Set multiple attributes.
-
-        .. note:: This will override any existing attributes that are present in the new dictionary.
-
-        :param attributes: a dictionary with the attributes to set
-        :raise aiida.common.ValidationError: if any of the keys are invalid, i.e. contain periods
-        :raise aiida.common.ModificationNotAllowed: if the node is stored
-        """
-        if self.is_stored:
-            raise exceptions.ModificationNotAllowed('the attributes of a stored node are immutable')
-
-        self.backend_entity.set_attribute_many(attributes)
-
-    def reset_attributes(self, attributes):
-        """Reset the attributes.
-
-        .. note:: This will completely clear any existing attributes and replace them with the new dictionary.
-
-        :param attributes: a dictionary with the attributes to set
-        :raise aiida.common.ValidationError: if any of the keys are invalid, i.e. contain periods
-        :raise aiida.common.ModificationNotAllowed: if the node is stored
-        """
-        if self.is_stored:
-            raise exceptions.ModificationNotAllowed('the attributes of a stored node are immutable')
-
-        self.backend_entity.reset_attributes(attributes)
-
-    def delete_attribute(self, key):
-        """Delete an attribute.
-
-        :param key: name of the attribute
-        :raises AttributeError: if the attribute does not exist
-        :raise aiida.common.ModificationNotAllowed: if the node is stored
-        """
-        if self.is_stored:
-            raise exceptions.ModificationNotAllowed('the attributes of a stored node are immutable')
-
-        self.backend_entity.delete_attribute(key)
-
-    def delete_attribute_many(self, keys):
-        """Delete multiple attributes.
-
-        :param keys: names of the attributes to delete
-        :raises AttributeError: if at least one of the attribute does not exist
-        :raise aiida.common.ModificationNotAllowed: if the node is stored
-        """
-        if self.is_stored:
-            raise exceptions.ModificationNotAllowed('the attributes of a stored node are immutable')
-
-        self.backend_entity.delete_attribute_many(keys)
-
-    def clear_attributes(self):
-        """Delete all attributes."""
-        if self.is_stored:
-            raise exceptions.ModificationNotAllowed('the attributes of a stored node are immutable')
-
-        self.backend_entity.clear_attributes()
-
-    def attributes_items(self):
-        """Return an iterator over the attributes.
-
-        :return: an iterator with attribute key value pairs
-        """
-        return self.backend_entity.attributes_items()
-
-    def attributes_keys(self):
-        """Return an iterator over the attribute keys.
-
-        :return: an iterator with attribute keys
-        """
-        return self.backend_entity.attributes_keys()
 
     def list_objects(self, key=None):
         """Return a list of the objects contained in this repository, optionally in the given sub directory.
