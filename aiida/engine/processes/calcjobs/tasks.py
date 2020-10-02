@@ -27,6 +27,7 @@ from aiida.orm.nodes.process.calculation.calcjob import CalcJobNode
 from aiida.schedulers.datastructures import JobState
 from aiida.manage.configuration import get_config_option
 
+from ..exit_code import ExitCode
 from ..process import ProcessState
 
 if TYPE_CHECKING:
@@ -36,6 +37,7 @@ UPLOAD_COMMAND = 'upload'
 SUBMIT_COMMAND = 'submit'
 UPDATE_COMMAND = 'update'
 RETRIEVE_COMMAND = 'retrieve'
+STASH_COMMAND = 'stash'
 KILL_COMMAND = 'kill'
 
 RETRY_INTERVAL_OPTION = 'transport.task_retry_initial_interval'
@@ -99,9 +101,9 @@ async def task_upload_job(process: 'CalcJob', transport_queue: TransportQueue, c
         raise
     except plumpy.futures.CancelledError:
         pass
-    except Exception:
+    except Exception as exception:
         logger.warning(f'uploading CalcJob<{node.pk}> failed')
-        raise TransportTaskException(f'upload_calculation failed {max_attempts} times consecutively')
+        raise TransportTaskException(f'upload_calculation failed {max_attempts} times consecutively') from exception
     else:
         logger.info(f'uploading CalcJob<{node.pk}> successful')
         node.set_state(CalcJobState.SUBMITTING)
@@ -148,9 +150,9 @@ async def task_submit_job(node: CalcJobNode, transport_queue: TransportQueue, ca
         )
     except plumpy.process_states.Interruption:
         pass
-    except Exception:
+    except Exception as exception:
         logger.warning(f'submitting CalcJob<{node.pk}> failed')
-        raise TransportTaskException(f'submit_calculation failed {max_attempts} times consecutively')
+        raise TransportTaskException(f'submit_calculation failed {max_attempts} times consecutively') from exception
     else:
         logger.info(f'submitting CalcJob<{node.pk}> successful')
         node.set_state(CalcJobState.WITHSCHEDULER)
@@ -210,9 +212,9 @@ async def task_update_job(node: CalcJobNode, job_manager, cancellable: Interrupt
         )
     except plumpy.process_states.Interruption:
         raise
-    except Exception:
+    except Exception as exception:
         logger.warning(f'updating CalcJob<{node.pk}> failed')
-        raise TransportTaskException(f'update_calculation failed {max_attempts} times consecutively')
+        raise TransportTaskException(f'update_calculation failed {max_attempts} times consecutively') from exception
     else:
         logger.info(f'updating CalcJob<{node.pk}> successful')
         if job_done:
@@ -239,8 +241,8 @@ async def task_retrieve_job(
 
     :raises: TransportTaskException if after the maximum number of retries the transport task still excepted
     """
-    if node.get_state() == CalcJobState.PARSING:
-        logger.warning(f'CalcJob<{node.pk}> already marked as PARSING, skipping task_retrieve_job')
+    if node.get_state() == CalcJobState.STASHING:
+        logger.warning(f'CalcJob<{node.pk}> already marked as STASHING, skipping task_retrieve_job')
         return
 
     initial_interval = get_config_option(RETRY_INTERVAL_OPTION)
@@ -279,13 +281,59 @@ async def task_retrieve_job(
         )
     except plumpy.process_states.Interruption:
         raise
-    except Exception:
+    except Exception as exception:
         logger.warning(f'retrieving CalcJob<{node.pk}> failed')
-        raise TransportTaskException(f'retrieve_calculation failed {max_attempts} times consecutively')
+        raise TransportTaskException(f'retrieve_calculation failed {max_attempts} times consecutively') from exception
     else:
-        node.set_state(CalcJobState.PARSING)
+        node.set_state(CalcJobState.STASHING)
         logger.info(f'retrieving CalcJob<{node.pk}> successful')
         return result
+
+
+async def task_stash_job(node: CalcJobNode, transport_queue: TransportQueue, cancellable: InterruptableFuture):
+    """Transport task that will optionally stash files of a completed job calculation on the remote.
+
+    The task will first request a transport from the queue. Once the transport is yielded, the relevant execmanager
+    function is called, wrapped in the exponential_backoff_retry coroutine, which, in case of a caught exception, will
+    retry after an interval that increases exponentially with the number of retries, for a maximum number of retries.
+    If all retries fail, the task will raise a TransportTaskException
+
+    :param node: the node that represents the job calculation
+    :param transport_queue: the TransportQueue from which to request a Transport
+    :param cancellable: the cancelled flag that will be queried to determine whether the task was cancelled
+    :type cancellable: :class:`aiida.engine.utils.InterruptableFuture`
+    :raises: Return if the tasks was successfully completed
+    :raises: TransportTaskException if after the maximum number of retries the transport task still excepted
+    """
+    if node.get_state() == CalcJobState.DONE:
+        logger.warning(f'calculation<{node.pk}> already marked as DONE, skipping task_stash_job')
+        return
+
+    initial_interval = get_config_option(RETRY_INTERVAL_OPTION)
+    max_attempts = get_config_option(MAX_ATTEMPTS_OPTION)
+
+    authinfo = node.computer.get_authinfo(node.user)
+
+    async def do_stash():
+        with transport_queue.request_transport(authinfo) as request:
+            transport = await cancellable.with_interrupt(request)
+
+            logger.info(f'stashing calculation<{node.pk}>')
+            return execmanager.stash_calculation(node, transport)
+
+    try:
+        await exponential_backoff_retry(
+            do_stash, initial_interval, max_attempts, logger=node.logger, ignore_exceptions=plumpy.Interruption
+        )
+    except plumpy.Interruption:
+        raise
+    except Exception as exception:
+        logger.warning(f'stashing calculation<{node.pk}> failed')
+        raise TransportTaskException(f'stash_calculation failed {max_attempts} times consecutively') from exception
+    else:
+        node.set_state(CalcJobState.DONE)
+        logger.info(f'stashing calculation<{node.pk}> successful')
+        return
 
 
 async def task_kill_job(node: CalcJobNode, transport_queue: TransportQueue, cancellable: InterruptableFuture):
@@ -321,9 +369,9 @@ async def task_kill_job(node: CalcJobNode, transport_queue: TransportQueue, canc
         result = await exponential_backoff_retry(do_kill, initial_interval, max_attempts, logger=node.logger)
     except plumpy.process_states.Interruption:
         raise
-    except Exception:
+    except Exception as exception:
         logger.warning(f'killing CalcJob<{node.pk}> failed')
-        raise TransportTaskException(f'kill_calculation failed {max_attempts} times consecutively')
+        raise TransportTaskException(f'kill_calculation failed {max_attempts} times consecutively') from exception
     else:
         logger.info(f'killing CalcJob<{node.pk}> successful')
         node.set_scheduler_state(JobState.DONE)
@@ -361,11 +409,15 @@ class Waiting(plumpy.process_states.Waiting):
 
     async def execute(self) -> plumpy.process_states.State:  # type: ignore[override] # pylint: disable=invalid-overridden-method
         """Override the execute coroutine of the base `Waiting` state."""
-        # pylint: disable=too-many-branches, too-many-statements
+        # pylint: disable=too-many-branches,too-many-statements
         node = self.process.node
         transport_queue = self.process.runner.transport
-        command = self.data
         result: plumpy.process_states.State = self
+
+        if isinstance(self.data, tuple):
+            command, exit_code = self.data
+        else:
+            command = self.data
 
         process_status = f'Waiting for transport task: {command}'
 
@@ -401,7 +453,17 @@ class Waiting(plumpy.process_states.Waiting):
                 # Create a temporary folder that has to be deleted by JobProcess.retrieved after successful parsing
                 temp_folder = tempfile.mkdtemp()
                 await self._launch_task(task_retrieve_job, node, transport_queue, temp_folder)
-                result = self.parse(temp_folder)
+                exit_code = self.process.parse(temp_folder)
+
+                is_successful = (exit_code == 0 or (isinstance(exit_code, ExitCode) and exit_code.status == 0))
+                if node.get_option('stash') is not None and is_successful:
+                    return self.stash(exit_code)
+
+                return self.finalize(exit_code)
+
+            elif command == STASH_COMMAND:
+                await self._launch_task(task_stash_job, node, transport_queue)
+                return self.finalize(exit_code)
 
             else:
                 raise RuntimeError('Unknown waiting command')
@@ -458,6 +520,11 @@ class Waiting(plumpy.process_states.Waiting):
             ProcessState.WAITING, None, msg=msg, data=RETRIEVE_COMMAND
         )  # type: ignore[return-value]
 
+    def stash(self, exit_code):
+        """Return the `Waiting` state that will `stash` the `CalcJob`."""
+        msg = 'Waiting to stash'
+        return self.create_state(ProcessState.WAITING, None, msg=msg, data=(STASH_COMMAND, exit_code))
+
     def parse(self, retrieved_temporary_folder: str) -> plumpy.process_states.Running:
         """Return the `Running` state that will parse the `CalcJob`.
 
@@ -466,6 +533,9 @@ class Waiting(plumpy.process_states.Waiting):
         return self.create_state(
             ProcessState.RUNNING, self.process.parse, retrieved_temporary_folder
         )  # type: ignore[return-value]
+
+    def finalize(self, exit_code):
+        return self.create_state(ProcessState.RUNNING, lambda: exit_code)
 
     def interrupt(self, reason: Any) -> Optional[plumpy.futures.Future]:  # type: ignore[override]
         """Interrupt the `Waiting` state by calling interrupt on the transport task `InterruptableFuture`."""
