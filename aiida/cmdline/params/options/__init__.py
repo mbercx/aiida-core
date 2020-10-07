@@ -160,6 +160,22 @@ GROUP = OverridableOption(
     '-G', '--group', 'group', type=types.GroupParamType(), help='A single group identified by its ID, UUID or label.'
 )
 
+SOURCE_GROUP = OverridableOption(
+    '-s',
+    '--source-group',
+    'source_group',
+    type=types.GroupParamType(),
+    help='A single group identified by its ID, UUID or label.'
+)
+
+TARGET_GROUP = OverridableOption(
+    '-t',
+    '--target-group',
+    'target_group',
+    type=types.GroupParamType(),
+    help='A single group identified by its ID, UUID or label.'
+)
+
 GROUPS = OverridableOption(
     '-G',
     '--groups',
