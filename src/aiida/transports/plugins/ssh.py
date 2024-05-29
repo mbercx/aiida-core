@@ -1166,9 +1166,6 @@ class SshTransport(Transport):
                 self._exec_cp(cp_exe, cp_flags, file, remotedestination)
 
         else:
-            if not self.path_exists(remotesource):
-                raise FileNotFoundError('Source not found')
-
             self._exec_cp(cp_exe, cp_flags, remotesource, remotedestination)
 
     def _exec_cp(self, cp_exe, cp_flags, src, dst):
@@ -1187,6 +1184,9 @@ class SshTransport(Transport):
                     retval, stdout, stderr, command
                 )
             )
+            if 'No such file or directory' in str(stderr):
+                raise FileNotFoundError(f'Error while executing cp: {stderr}')
+
             raise IOError(
                 'Error while executing cp. Exit code: {}, ' "stdout: '{}', stderr: '{}', " "command: '{}'".format(
                     retval, stdout, stderr, command
