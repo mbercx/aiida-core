@@ -24,6 +24,7 @@ import warnings
 import click
 import pytest
 from aiida import get_profile
+from aiida.common.folders import Folder
 from aiida.manage.configuration import Config, Profile, get_config, load_profile
 
 pytest_plugins = ['aiida.manage.tests.pytest_fixtures', 'sphinx.testing.fixtures']
@@ -644,3 +645,63 @@ def reset_log_level():
         log.CLI_ACTIVE = None
         log.CLI_LOG_LEVEL = None
         log.configure_logging(with_orm=True)
+
+
+@pytest.fixture
+def create_file_hierarchy():
+    """Create a file hierarchy in the target location.
+    .. note:: empty directories are ignored and are not created explicitly.
+    :param hierarchy: mapping with directory structure, e.g. returned by ``serialize_file_hierarchy``.
+    :param target: the target where the hierarchy should be created.
+    """
+
+    def _create_file_hierarchy(hierarchy: t.Dict, target: t.Union[pathlib.Path, Folder]) -> None:
+        for filename, value in hierarchy.items():
+            if isinstance(value, dict):
+                if isinstance(target, pathlib.Path):
+                    _create_file_hierarchy(value, target / filename)
+                elif isinstance(target, Folder):
+                    _create_file_hierarchy(value, target.get_subfolder(filename, create=True))
+                else:
+                    raise TypeError('target must be either a `Path` or a `Folder` instance.')
+
+            elif isinstance(target, pathlib.Path):
+                target.mkdir(parents=True, exist_ok=True)
+                (target / filename).write_text(value)
+
+            elif isinstance(target, Folder):
+                with target.open(filename, 'w') as handle:
+                    handle.write(value)
+            else:
+                raise TypeError('target must be either a `Path` or a `Folder` instance.')
+
+    return _create_file_hierarchy
+
+
+@pytest.fixture
+def serialize_file_hierarchy():
+    """Serialize the file hierarchy at ``dirpath``.
+    .. note:: empty directories are ignored.
+    :param dirpath: the base path.
+    :return: a mapping representing the file hierarchy, where keys are filenames. The leafs correspond to files and the
+        values are the text contents.
+    """
+
+    def factory(dirpath: pathlib.Path, read_bytes=True) -> dict:
+        serialized = {}
+
+        for root, _, files in os.walk(dirpath):
+            for filepath in files:
+                relpath = pathlib.Path(root).relative_to(dirpath)
+                subdir = serialized
+                if relpath.parts:
+                    for part in relpath.parts:
+                        subdir = subdir.setdefault(part, {})
+                if read_bytes:
+                    subdir[filepath] = (pathlib.Path(root) / filepath).read_bytes()
+                else:
+                    subdir[filepath] = (pathlib.Path(root) / filepath).read_text()
+
+        return serialized
+
+    return factory
